@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  reader
+  librarian
+}
+
+enum BookCopyStatus {
+  available
+  borrowed
+  lost
+  disabled
+}
+
+enum LoanStatus {
+  active
+  returned
+  overdue
+}
+
+enum FineStatus {
+  pending
+  processed
+  waived
+}
+
+enum AuditAction {
+  book_checked_out
+  book_returned
+  fine_processed
+  book_renewed
+}
+
+model user_account {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  password_hash String
+  role         UserRole
+  name         String
+  email        String?
+  created_at   DateTime   @default(now())
+  updated_at   DateTime   @updatedAt
+
+  loan_records loan_record[]
+  fine_records fine_record[]
+
+  @@index([username])
+  @@map("user_account")
+}
+
+model book_title {
+  id               String      @id @default(cuid())
+  isbn             String?     @unique
+  title            String
+  author           String
+  publisher        String?
+  publish_year     Int?
+  category         String?
+  description      String?
+  created_at       DateTime    @default(now())
+  updated_at       DateTime    @updatedAt
+
+  book_copies      book_copy[]
+
+  @@index([title])
+  @@index([author])
+  @@map("book_title")
+}
+
+model book_copy {
+  id               String          @id @default(cuid())
+  book_title_id    String
+  barcode          String          @unique
+  status           BookCopyStatus  @default(available)
+  location         String?
+  condition        String?
+  rfid_tag         String?
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+
+  book_title       book_title      @relation(fields: [book_title_id], references: [id], onDelete: Cascade)
+  loan_records     loan_record[]
+
+  @@index([book_title_id])
+  @@index([status])
+  @@map("book_copy")
+}
+
+model loan_record {
+  id               String       @id @default(cuid())
+  user_id          String
+  book_copy_id     String
+  status           LoanStatus   @default(active)
+  checkout_date    DateTime     @default(now())
+  due_date         DateTime
+  return_date      DateTime?
+  renew_count      Int          @default(0)
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+
+  user_account     user_account @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  book_copy        book_copy    @relation(fields: [book_copy_id], references: [id], onDelete: Cascade)
+  fine_record      fine_record?
+
+  @@index([user_id])
+  @@index([book_copy_id])
+  @@index([status])
+  @@map("loan_record")
+}
+
+model fine_record {
+  id               String      @id @default(cuid())
+  loan_record_id   String      @unique
+  user_id          String
+  amount           Decimal
+  reason           String
+  status           FineStatus  @default(pending)
+  created_at       DateTime    @default(now())
+  processed_at     DateTime?
+  processed_by_id  String?
+  note             String?
+
+  loan_record      loan_record @relation(fields: [loan_record_id], references: [id], onDelete: Cascade)
+  user_account     user_account @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([status])
+  @@map("fine_record")
+}
+
+model audit_log {
+  id               String      @id @default(cuid())
+  action           AuditAction
+  actor_id         String
+  actor_name       String
+  target_type      String
+  target_id        String
+  details          String?
+  created_at       DateTime    @default(now())
+
+  @@index([actor_id])
+  @@index([action])
+  @@index([created_at])
+  @@map("audit_log")
+}
